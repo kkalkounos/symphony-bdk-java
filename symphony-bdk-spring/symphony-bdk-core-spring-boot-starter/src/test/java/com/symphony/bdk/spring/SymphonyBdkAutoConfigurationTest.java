@@ -237,6 +237,11 @@ class SymphonyBdkAutoConfigurationTest {
       ApiClient podClient = (ApiClient) context.getBean("podApiClient");
       assertThat(podClient.getAuthentications()).isNotEmpty();
       assertThat(podClient.getAuthentications()).containsKey("bearerAuth");
+
+      assertThat(context).hasBean("usersApiClient");
+      ApiClient usersClient = (ApiClient) context.getBean("usersApiClient");
+      assertThat(usersClient.getAuthentications()).isNotEmpty();
+      assertThat(usersClient.getAuthentications()).containsKey("bearerAuth");
     });
   }
 

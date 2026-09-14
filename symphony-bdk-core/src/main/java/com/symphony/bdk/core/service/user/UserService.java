@@ -16,7 +16,9 @@ import com.symphony.bdk.core.service.pagination.model.PaginationAttribute;
 import com.symphony.bdk.core.service.pagination.model.StreamPaginationAttribute;
 import com.symphony.bdk.core.service.user.constant.RoleId;
 import com.symphony.bdk.core.service.user.mapper.UserDetailMapper;
+import com.symphony.bdk.core.service.user.mapper.UserLookupMapper;
 import com.symphony.bdk.gen.api.AuditTrailApi;
+import com.symphony.bdk.gen.api.SbeUsersApi;
 import com.symphony.bdk.gen.api.UserApi;
 import com.symphony.bdk.gen.api.UsersApi;
 import com.symphony.bdk.gen.api.model.Avatar;
@@ -31,6 +33,7 @@ import com.symphony.bdk.gen.api.model.RoleDetail;
 import com.symphony.bdk.gen.api.model.StringId;
 import com.symphony.bdk.gen.api.model.UserDetail;
 import com.symphony.bdk.gen.api.model.UserFilter;
+import com.symphony.bdk.gen.api.model.UserLookupList;
 import com.symphony.bdk.gen.api.model.UserSearchQuery;
 import com.symphony.bdk.gen.api.model.UserSearchResults;
 import com.symphony.bdk.gen.api.model.UserStatus;
@@ -41,7 +44,6 @@ import com.symphony.bdk.gen.api.model.V1AuditTrailInitiatorResponse;
 import com.symphony.bdk.gen.api.model.V2UserAttributes;
 import com.symphony.bdk.gen.api.model.V2UserCreate;
 import com.symphony.bdk.gen.api.model.V2UserDetail;
-import com.symphony.bdk.gen.api.model.V2UserList;
 import com.symphony.bdk.http.api.ApiException;
 
 import lombok.extern.slf4j.Slf4j;
@@ -51,9 +53,15 @@ import org.apiguardian.api.API;
 import java.io.IOException;
 import java.io.InputStream;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Objects;
+import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -77,25 +85,35 @@ import org.jspecify.annotations.Nullable;
 @API(status = API.Status.STABLE)
 public class UserService implements OboUserService, OboService<OboUserService> {
 
+  /**
+   * Maximum number of uids, emails or usernames accepted by a single /v5/users lookup call.
+   */
+  private static final int LOOKUP_BATCH_SIZE = 100;
+
   private final UserApi userApi;
   private final UsersApi usersApi;
+  private final SbeUsersApi sbeUsersApi;
   private final AuditTrailApi auditTrailApi;
   private final AuthSession authSession;
   private final RetryWithRecoveryBuilder<?> retryBuilder;
 
-  public UserService(UserApi userApi, UsersApi usersApi, AuditTrailApi auditTrailApi, AuthSession authSession,
+  public UserService(UserApi userApi, UsersApi usersApi, AuditTrailApi auditTrailApi,
+      SbeUsersApi sbeUsersApi, AuthSession authSession,
       RetryWithRecoveryBuilder<?> retryBuilder) {
     this.userApi = userApi;
     this.usersApi = usersApi;
+    this.sbeUsersApi = sbeUsersApi;
     this.auditTrailApi = auditTrailApi;
     this.authSession = authSession;
     this.retryBuilder = RetryWithRecoveryBuilder.copyWithoutRecoveryStrategies(retryBuilder)
         .recoveryStrategy(ApiException::isUnauthorized, authSession::refresh);
   }
 
-  public UserService(UserApi userApi, UsersApi usersApi, AuditTrailApi auditTrailApi, RetryWithRecoveryBuilder<?> retryBuilder) {
+  public UserService(UserApi userApi, UsersApi usersApi, AuditTrailApi auditTrailApi,
+      SbeUsersApi sbeUsersApi, RetryWithRecoveryBuilder<?> retryBuilder) {
     this.userApi = userApi;
     this.usersApi = usersApi;
+    this.sbeUsersApi = sbeUsersApi;
     this.auditTrailApi = auditTrailApi;
     this.authSession = null;
     this.retryBuilder = RetryWithRecoveryBuilder.copyWithoutRecoveryStrategies(retryBuilder);
@@ -103,18 +121,20 @@ public class UserService implements OboUserService, OboService<OboUserService> {
 
   @Override
   public OboUserService obo(AuthSession oboSession) {
-    return new UserService(userApi, usersApi, auditTrailApi, oboSession, retryBuilder);
+    return new UserService(userApi, usersApi, auditTrailApi, sbeUsersApi, oboSession, retryBuilder);
   }
 
   /**
    * {@inheritDoc}
    */
   @Override
-  public List<UserV2> listUsersByIds(List<Long> uidList, @Nullable Boolean local, @Nullable Boolean active) {
-    String uids = uidList.stream().map(String::valueOf).collect(Collectors.joining(","));
-    V2UserList v2UserList = executeAndRetry("searchUserByIds",
-        () -> usersApi.v3UsersGet(uids, null, null, local, active, authSession.getSessionToken()));
-    return this.getUsersOrEmpty(v2UserList);
+  public List<UserV2> listUsersByIds(List<Long> uidList, @Nullable Boolean active) {
+    if (uidList == null || uidList.isEmpty()) {
+      return Collections.emptyList();
+    }
+    List<String> uids = uidList.stream().filter(Objects::nonNull).map(String::valueOf).collect(Collectors.toList());
+    return this.lookupUsersInBatches("searchUserByIds", uids,
+        batch -> () -> sbeUsersApi.lookupUsers(authSession.getSessionToken(), batch, null, null, active));
   }
 
   /**
@@ -122,22 +142,19 @@ public class UserService implements OboUserService, OboService<OboUserService> {
    */
   @Override
   public List<UserV2> listUsersByIds(List<Long> uidList) {
-    String uids = uidList.stream().map(String::valueOf).collect(Collectors.joining(","));
-    V2UserList v2UserList = executeAndRetry("searchUserByIds",
-        () -> usersApi.v3UsersGet(uids, null, null, false, null, authSession.getSessionToken()));
-    return this.getUsersOrEmpty(v2UserList);
+    return this.listUsersByIds(uidList, null);
   }
 
   /**
    * {@inheritDoc}
    */
   @Override
-  public List<UserV2> listUsersByEmails(List<String> emailList,
-      @Nullable Boolean local, @Nullable Boolean active) {
-    String emails = String.join(",", emailList);
-    V2UserList v2UserList = executeAndRetry("searchUserByEmails",
-        () -> usersApi.v3UsersGet(null, emails, null, local, active, authSession.getSessionToken()));
-    return this.getUsersOrEmpty(v2UserList);
+  public List<UserV2> listUsersByEmails(List<String> emailList, @Nullable Boolean active) {
+    if (emailList == null || emailList.isEmpty()) {
+      return Collections.emptyList();
+    }
+    return this.lookupUsersInBatches("searchUserByEmails", emailList,
+        batch -> () -> sbeUsersApi.lookupUsers(authSession.getSessionToken(), null, batch, null, active));
   }
 
   /**
@@ -145,10 +162,7 @@ public class UserService implements OboUserService, OboService<OboUserService> {
    */
   @Override
   public List<UserV2> listUsersByEmails(List<String> emailList) {
-    String emails = String.join(",", emailList);
-    V2UserList v2UserList = executeAndRetry("searchUserByEmails",
-        () -> usersApi.v3UsersGet( null, emails, null, false, null, authSession.getSessionToken()));
-    return this.getUsersOrEmpty(v2UserList);
+    return this.listUsersByEmails(emailList, null);
   }
 
   /**
@@ -156,10 +170,11 @@ public class UserService implements OboUserService, OboService<OboUserService> {
    */
   @Override
   public List<UserV2> listUsersByUsernames(List<String> usernameList, @Nullable Boolean active) {
-    String usernames = String.join(",", usernameList);
-    V2UserList v2UserList = executeAndRetry("searchUserByUsernames",
-        () -> usersApi.v3UsersGet(null, null, usernames, true, active, authSession.getSessionToken()));
-    return this.getUsersOrEmpty(v2UserList);
+    if (usernameList == null || usernameList.isEmpty()) {
+      return Collections.emptyList();
+    }
+    return this.lookupUsersInBatches("searchUserByUsernames", usernameList,
+        batch -> () -> sbeUsersApi.lookupUsers(authSession.getSessionToken(), null, null, batch, active));
   }
 
   /**
@@ -167,18 +182,39 @@ public class UserService implements OboUserService, OboService<OboUserService> {
    */
   @Override
   public List<UserV2> listUsersByUsernames(List<String> usernameList) {
-    String usernames = String.join(",", usernameList);
-    V2UserList v2UserList = executeAndRetry("searchUserByUsernames",
-        () -> usersApi.v3UsersGet( null, null, usernames, true, null, authSession.getSessionToken()));
-    return this.getUsersOrEmpty(v2UserList);
+    return this.listUsersByUsernames(usernameList, null);
   }
 
-  private List<UserV2> getUsersOrEmpty(V2UserList v2UserList) {
-    if (v2UserList == null || v2UserList.getUsers() == null) {
+  private List<UserV2> lookupUsersInBatches(String name, List<String> values,
+      Function<List<String>, SupplierWithApiException<UserLookupList>> lookup) {
+    // the server deduplicates case-insensitively within a call only, so duplicates are removed upfront to avoid
+    // repeats across batches. Blank values are dropped as a batch made only of them is rejected with a 400
+    Set<String> seen = new HashSet<>();
+    List<String> distinctValues = values.stream()
+        .filter(Objects::nonNull)
+        .filter(value -> !value.isBlank())
+        .filter(value -> seen.add(value.toUpperCase(Locale.ROOT)))
+        .collect(Collectors.toList());
+    if (distinctValues.isEmpty()) {
       return Collections.emptyList();
     }
+    List<UserV2> users = new ArrayList<>();
+    for (int i = 0; i < distinctValues.size(); i += LOOKUP_BATCH_SIZE) {
+      List<String> batch = distinctValues.subList(i, Math.min(i + LOOKUP_BATCH_SIZE, distinctValues.size()));
+      users.addAll(this.getUsersOrEmpty(
+          executeAndRetry(name, sbeUsersApi.getApiClient().getBasePath(), lookup.apply(batch))));
+    }
+    return users;
+  }
 
-    return v2UserList.getUsers();
+  private List<UserV2> getUsersOrEmpty(UserLookupList userLookupList) {
+    if (userLookupList == null || userLookupList.getUsers() == null) {
+      return Collections.emptyList();
+    }
+    return userLookupList.getUsers().stream()
+        .filter(Objects::nonNull)
+        .map(UserLookupMapper.INSTANCE::userLookupToUserV2)
+        .collect(Collectors.toList());
   }
 
   /**
@@ -809,8 +845,12 @@ public class UserService implements OboUserService, OboService<OboUserService> {
   }
 
   private <T> T executeAndRetry(String name, SupplierWithApiException<T> supplier) {
+    return executeAndRetry(name, userApi.getApiClient().getBasePath(), supplier);
+  }
+
+  private <T> T executeAndRetry(String name, String address, SupplierWithApiException<T> supplier) {
     checkAuthSession(authSession);
-    return RetryWithRecovery.executeAndRetry(retryBuilder, name, userApi.getApiClient().getBasePath(), supplier);
+    return RetryWithRecovery.executeAndRetry(retryBuilder, name, address, supplier);
   }
 
   private static class AuditTrailInitiatorListAdapter implements CursorPaginatedPayload<V1AuditTrailInitiatorResponse> {

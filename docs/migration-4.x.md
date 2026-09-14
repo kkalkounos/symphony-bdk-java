@@ -199,6 +199,39 @@ code change to `SymphonyBdkBuilder` usage required. Before switching, be aware o
 `symphony-bdk-http-jdk` is currently `@API(status = API.Status.EXPERIMENTAL)`. If you need an `@API(STABLE)`-only
 dependency tree, stay on `symphony-bdk-http-jersey` for now.
 
+## 10. `local` parameter removed from `UserService` lookups
+
+`UserService#listUsersByIds` and `UserService#listUsersByEmails` (and their `OboUserService` counterparts) now call
+the `/v5/users` lookup endpoint. The `local` parameter has been removed:
+
+- `listUsersByIds(List<Long> uidList, Boolean local, Boolean active)` → `listUsersByIds(List<Long> uidList, Boolean active)`
+- `listUsersByEmails(List<String> emailList, Boolean local, Boolean active)` → `listUsersByEmails(List<String> emailList, Boolean active)`
+
+Whether a user is looked up locally or in Directory is no longer chosen by the caller: the user ID determines it.
+IDs belonging to the caller's pod are resolved locally, while IDs from other pods are resolved through Directory.
+Emails are matched against the caller's pod first, and only those without a local match are looked up in
+directory. Directory lookups only return users when the caller is entitled to external communication.
+This also applies to the `listUsersByIds(List<Long>)` and `listUsersByEmails(List<String>)` overloads, which
+previously always performed a Directory search (`local=false`). `listUsersByUsernames` still only resolves users from
+the caller's pod, as before.
+
+The endpoint accepts at most 100 ids, emails or usernames per call. Longer lists passed to `listUsersByIds`,
+`listUsersByEmails` or `listUsersByUsernames` are deduplicated (ignoring case) and split into several calls of up to
+100 elements each. Null and blank elements are dropped before calling the endpoint.
+
+Drop the `local` argument from existing calls. `searchUsers` and `searchAllUsers` still accept `local`.
+
+The `/v5/users` endpoint is served from the pod root rather than `/pod`, so `UserService` now also takes a
+`SbeUsersApi` built on `ApiClientFactory#getUsersClient()`. Both public constructors gained a `SbeUsersApi` parameter
+after `AuditTrailApi`:
+
+- `UserService(UserApi, UsersApi, AuditTrailApi, AuthSession, RetryWithRecoveryBuilder)` → `UserService(UserApi, UsersApi, AuditTrailApi, SbeUsersApi, AuthSession, RetryWithRecoveryBuilder)`
+- `UserService(UserApi, UsersApi, AuditTrailApi, RetryWithRecoveryBuilder)` → `UserService(UserApi, UsersApi, AuditTrailApi, SbeUsersApi, RetryWithRecoveryBuilder)`
+
+This only affects code that instantiates `UserService` directly, e.g. a custom `userService` or `oboUserService` bean.
+`SymphonyBdk#users()` and the Spring Boot starter are already wired: the starter exposes a `usersApiClient`
+`ApiClient` bean and a `SbeUsersApi` bean that can be injected.
+
 ## Support window
 
 BDK 3.x will receive critical security fixes for **6 months** following the BDK 4.0.0 release, where Symphony is

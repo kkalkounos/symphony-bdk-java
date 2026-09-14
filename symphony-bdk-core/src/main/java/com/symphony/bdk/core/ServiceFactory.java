@@ -42,6 +42,7 @@ import com.symphony.bdk.gen.api.MessagesApi;
 import com.symphony.bdk.gen.api.PodApi;
 import com.symphony.bdk.gen.api.PresenceApi;
 import com.symphony.bdk.gen.api.RoomMembershipApi;
+import com.symphony.bdk.gen.api.SbeUsersApi;
 import com.symphony.bdk.gen.api.SessionApi;
 import com.symphony.bdk.gen.api.ShareApi;
 import com.symphony.bdk.gen.api.SignalsApi;
@@ -74,6 +75,7 @@ import org.jspecify.annotations.Nullable;
 class ServiceFactory {
 
   private final ApiClient podClient;
+  private final ApiClient usersClient;
   private final ApiClient agentClient;
   private final ApiClient datafeedAgentClient;
   private final ApiClient datahoseAgentClient;
@@ -99,6 +101,7 @@ class ServiceFactory {
   ) {
     this.config = config;
     this.podClient = apiClientFactory.getPodClient();
+    this.usersClient = apiClientFactory.getUsersClient();
     this.agentClient = apiClientFactory.getAgentClient();
     this.datafeedAgentClient = apiClientFactory.getDatafeedAgentClient();
     this.datahoseAgentClient = apiClientFactory.getDatahoseAgentClient();
@@ -119,6 +122,9 @@ class ServiceFactory {
         this.podClient.getAuthentications().put(BEARER_AUTH, new OAuthentication(oAuthSession::getBearerToken));
         this.podClient.addEnforcedAuthenticationScheme(BEARER_AUTH);
 
+        this.usersClient.getAuthentications().put(BEARER_AUTH, new OAuthentication(oAuthSession::getBearerToken));
+        this.usersClient.addEnforcedAuthenticationScheme(BEARER_AUTH);
+
         this.agentClient.getAuthentications().put(BEARER_AUTH, new OAuthentication(oAuthSession::getBearerToken));
         this.agentClient.addEnforcedAuthenticationScheme(BEARER_AUTH);
 
@@ -137,8 +143,8 @@ class ServiceFactory {
    * @return a new {@link UserService} instance.
    */
   public UserService getUserService() {
-    return new UserService(new UserApi(podClient), new UsersApi(podClient), new AuditTrailApi(agentClient), authSession,
-        retryBuilder);
+    return new UserService(new UserApi(podClient), new UsersApi(podClient), new AuditTrailApi(agentClient),
+        new SbeUsersApi(usersClient), authSession, retryBuilder);
   }
 
   /**

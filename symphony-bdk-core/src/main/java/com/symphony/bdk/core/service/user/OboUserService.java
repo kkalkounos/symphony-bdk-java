@@ -19,71 +19,83 @@ import org.jspecify.annotations.Nullable;
 public interface OboUserService {
 
   /**
-   * {@link UserService#listUsersByIds(List, Boolean, Boolean)}
+   * {@link UserService#listUsersByIds(List, Boolean)}
+   * <p>
+   * Lists of more than 100 elements are split into several calls, 100 being the maximum accepted by the
+   * {@code /v5/users} lookup endpoint.
    *
    * @param uidList List of user ids
-   * @param local   If true then a local DB search will be performed and only local pod users will be
-   *                returned. If absent or false then a directory search will be performed and users
-   *                from other pods who are visible to the calling user will also be returned.
    * @param active  If not set all user status will be returned,
    *                if true all active users will be returned,
    *                if false all inactive users will be returned
    * @return Users found by user ids
-   * @see <a href="https://developers.symphony.com/restapi/reference/users-lookup-v3">Users Lookup V3</a>
+   * @see <a href="https://github.com/finos/symphony-api-spec/blob/a0b152881a0405b7510cfc7e3a9698e8cb8c566c/users/users-api-public.yaml">Users Lookup V5</a>
    */
-  List<UserV2> listUsersByIds(List<Long> uidList, @Nullable Boolean local, @Nullable Boolean active);
+  List<UserV2> listUsersByIds(List<Long> uidList, @Nullable Boolean active);
 
   /**
    * {@link UserService#listUsersByIds(List)}
+   * <p>
+   * Lists of more than 100 elements are split into several calls, 100 being the maximum accepted by the
+   * {@code /v5/users} lookup endpoint.
    *
    * @param uidList List of user ids
    * @return Users found by user ids
-   * @see <a href="https://developers.symphony.com/restapi/reference/users-lookup-v3">Users Lookup V3</a>
+   * @see <a href="https://github.com/finos/symphony-api-spec/blob/a0b152881a0405b7510cfc7e3a9698e8cb8c566c/users/users-api-public.yaml">Users Lookup V5</a>
    */
   List<UserV2> listUsersByIds(List<Long> uidList);
 
   /**
-   * {@link UserService#listUsersByEmails(List, Boolean, Boolean)}
+   * {@link UserService#listUsersByEmails(List, Boolean)}
+   * <p>
+   * Lists of more than 100 elements are split into several calls, 100 being the maximum accepted by the
+   * {@code /v5/users} lookup endpoint.
    *
    * @param emailList List of emails
-   * @param local     If true then a local DB search will be performed and only local pod users will be
-   *                  returned. If absent or false then a directory search will be performed and users
-   *                  from other pods who are visible to the calling user will also be returned.
    * @param active    If not set all user status will be returned,
    *                  if true all active users will be returned,
    *                  if false all inactive users will be returned
    * @return Users found by emails.
-   * @see <a href="https://developers.symphony.com/restapi/reference/users-lookup-v3">Users Lookup V3</a>
+   * @see <a href="https://github.com/finos/symphony-api-spec/blob/a0b152881a0405b7510cfc7e3a9698e8cb8c566c/users/users-api-public.yaml">Users Lookup V5</a>
    */
-  List<UserV2> listUsersByEmails(List<String> emailList, @Nullable Boolean local, @Nullable Boolean active);
+  List<UserV2> listUsersByEmails(List<String> emailList, @Nullable Boolean active);
 
   /**
    * {@link UserService#listUsersByEmails(List)}
+   * <p>
+   * Lists of more than 100 elements are split into several calls, 100 being the maximum accepted by the
+   * {@code /v5/users} lookup endpoint.
    *
    * @param emailList List of emails
    * @return Users found by emails
-   * @see <a href="https://developers.symphony.com/restapi/reference/users-lookup-v3">Users Lookup V3</a>
+   * @see <a href="https://github.com/finos/symphony-api-spec/blob/a0b152881a0405b7510cfc7e3a9698e8cb8c566c/users/users-api-public.yaml">Users Lookup V5</a>
    */
   List<UserV2> listUsersByEmails(List<String> emailList);
 
   /**
    * {@link UserService#listUsersByUsernames(List, Boolean)}
+   * <p>
+   * Lists of more than 100 elements are split into several calls, 100 being the maximum accepted by the
+   * {@code /v5/users} lookup endpoint.
    *
    * @param usernameList List of usernames
    * @param active       If not set all user status will be returned,
    *                     if true all active users will be returned,
    *                     if false all inactive users will be returned
    * @return Users found by usernames
-   * @see <a href="https://developers.symphony.com/restapi/reference/users-lookup-v3">Users Lookup V3</a>
+   * @see <a href="https://github.com/finos/symphony-api-spec/blob/a0b152881a0405b7510cfc7e3a9698e8cb8c566c/users/users-api-public.yaml">Users Lookup V5</a>
    */
   List<UserV2> listUsersByUsernames(List<String> usernameList, @Nullable Boolean active);
 
   /**
    * {@link UserService#listUsersByUsernames(List)}
+   * <p>
+   * Lists of more than 100 elements are split into several calls, 100 being the maximum accepted by the
+   * {@code /v5/users} lookup endpoint.
    *
    * @param usernameList List of usernames
    * @return Users found by usernames
-   * @see <a href="https://developers.symphony.com/restapi/reference#users-lookup-v3">Users Lookup V3</a>
+   * @see <a href="https://github.com/finos/symphony-api-spec/blob/a0b152881a0405b7510cfc7e3a9698e8cb8c566c/users/users-api-public.yaml">Users Lookup V5</a>
    */
   List<UserV2> listUsersByUsernames(List<String> usernameList);
 
